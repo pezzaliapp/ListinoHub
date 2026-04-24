@@ -1,17 +1,272 @@
-<!doctype html>
-<html lang="it">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="/ListinoHub/icons/icon-192.png" />
-    <link rel="apple-touch-icon" href="/ListinoHub/icons/apple-touch-icon.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#15171c" />
-    <meta name="author" content="PezzaliAPP" />
-    <meta name="description" content="ListinoHub — PWA mobile-first per listini, ricerca articoli e preventivi con sconti." />
-    <title>ListinoHub</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+<!DOCTYPE html>
+<html data-app="ListinoHub" data-ver="1.0.0" lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>ListinoHub</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#15171c" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="format-detection" content="telephone=no" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="style.mobile.cards.v3.css" />
+</head>
+<body>
+  <header data-zone="header">
+    <div class="logo-container">
+      <img alt="ListinoHub" class="logo" src="icons/icon-192.png" />
+      <h1>ListinoHub</h1>
+    </div>
+  </header>
+
+  <main>
+    <p class="sr-only" id="deviceHint">Su smartphone ogni riga è visualizzata come scheda verticale.</p>
+
+    <!-- =======================================================
+         NUOVO LISTINO (form pre-upload)
+         ======================================================= -->
+    <section data-zone="nuovo_listino" id="upload-section">
+      <h2>Nuovo listino</h2>
+
+      <div class="form-grid">
+        <div class="field">
+          <label for="newSupplier">Fornitore <span class="req">*</span></label>
+          <input id="newSupplier" type="text" placeholder="Es. Cormach, Pippo, Pluto" autocomplete="off" spellcheck="false" />
+        </div>
+
+        <div class="field">
+          <label for="newMaxDiscount">Sconto max commerciale %</label>
+          <input id="newMaxDiscount" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" value="0" />
+          <small class="hint">0 = nessun limite</small>
+        </div>
+
+        <div class="field field-inline">
+          <label class="chk">
+            <input id="newIsNetto" type="checkbox" />
+            Listino a prezzi netti (niente sconti/margine)
+          </label>
+        </div>
+
+        <div class="field">
+          <label for="newBonusType">Bonus — tipo</label>
+          <input id="newBonusType" type="text" placeholder="Es. buoni carburante, punti fedeltà" autocomplete="off" />
+        </div>
+
+        <div class="field">
+          <label for="newBonusValue">Bonus — valore per pezzo</label>
+          <input id="newBonusValue" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" value="0" />
+          <small class="hint">Es. 5 = 5€/pz o 10 punti/pz</small>
+        </div>
+
+        <div class="field field-full">
+          <label for="csvFileInput">File listino (CSV / XLSX / XLS)</label>
+          <input id="csvFileInput" type="file" accept=".csv,.tsv,.xlsx,.xls" aria-label="Seleziona file listino" />
+          <p class="field-error" id="csvError" hidden>Errore nel caricamento del file.</p>
+        </div>
+      </div>
+
+      <div class="toggles">
+        <label class="chk">
+          <input id="toggleCosti" type="checkbox" checked />
+          Popola automaticamente Trasporto e Installazione
+        </label>
+        <label class="chk">
+          <input id="toggleMostraServizi" type="checkbox" checked />
+          Mostra dettagli Trasporto/Installazione nel report
+        </label>
+      </div>
+    </section>
+
+    <!-- =======================================================
+         LISTINI CARICATI
+         ======================================================= -->
+    <section data-zone="listini_caricati" id="listini-section">
+      <h2>Listini caricati</h2>
+      <div id="listiniList" class="listini-list" aria-live="polite">
+        <p class="muted" id="listiniEmpty">Nessun listino caricato. Importa il primo file per iniziare.</p>
+      </div>
+    </section>
+
+    <!-- =======================================================
+         FILTRA & CERCA ARTICOLO
+         ======================================================= -->
+    <section data-zone="selezione_listino" id="search-section">
+      <h2>Cerca articolo</h2>
+
+      <div class="field">
+        <label for="supplierFilter">Filtra per fornitore</label>
+        <select id="supplierFilter" aria-label="Filtra per fornitore">
+          <option value="__all__">Tutti i fornitori</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="searchListino">Cerca</label>
+        <input id="searchListino" type="text" placeholder="Codice o descrizione" autocomplete="off" spellcheck="false" />
+      </div>
+
+      <div class="field">
+        <label for="listinoSelect" class="sr-only">Risultati</label>
+        <select id="listinoSelect" size="1" aria-label="Risultati ricerca"></select>
+      </div>
+
+      <div class="actions-row">
+        <button id="btnAddFromListino" type="button" class="btn-primary">Aggiungi articolo</button>
+        <button id="btnAddManual" type="button">Aggiungi manuale</button>
+      </div>
+    </section>
+
+    <!-- =======================================================
+         ARTICOLI AGGIUNTI
+         ======================================================= -->
+    <section data-zone="tabella_articoli" id="articoli-section">
+      <h2>Articoli aggiunti</h2>
+
+      <div class="smart-controls" id="smart-controls">
+        <h3>Modalità Preventivo / Ordine</h3>
+        <label class="chk">
+          <input id="toggleSmartMode" type="checkbox" />
+          Modalità Cliente (Smart)
+        </label>
+        <label class="chk">
+          <input id="toggleShowVAT" type="checkbox" />
+          Mostra IVA
+        </label>
+        <div class="vat-row">
+          <label for="vatRate">IVA %</label>
+          <input id="vatRate" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" value="22" />
+        </div>
+        <label class="chk">
+          <input id="toggleHideVenduto" type="checkbox" />
+          Ometti "Vend.€"
+        </label>
+        <label class="chk">
+          <input id="toggleHideDiff" type="checkbox" />
+          Ometti "Diff."
+        </label>
+        <label class="chk">
+          <input id="toggleHideDiscounts" type="checkbox" />
+          Ometti Sc.1/Sc.2 nel report
+        </label>
+        <label class="chk">
+          <input id="toggleShowClientDiscount" type="checkbox" />
+          Attiva "Sc.Cliente" (sostituisce Sc.1/Sc.2 + Marg.% a prezzo invariato)
+        </label>
+        <div class="smart-info">
+          <strong>Sconto eq. cliente:</strong>
+          <span id="smartEquivalentDiscount">—</span>
+        </div>
+      </div>
+
+      <table id="articoli-table">
+        <thead>
+          <tr>
+            <th data-col="codice" title="Codice">Codice</th>
+            <th data-col="fornitore" title="Fornitore">Forn.</th>
+            <th data-col="descrizione" title="Descrizione">Descrizione</th>
+            <th data-col="prezzoLordo" title="Prezzo Lordo">P. Lordo</th>
+            <th data-col="sconto1" title="Sconto 1%">Sc.1%</th>
+            <th data-col="sconto2" title="Sconto 2%">Sc.2%</th>
+            <th data-col="scontoCliente" title="Sconto cliente %">Sc.Cli.%</th>
+            <th data-col="margine" title="Margine %">Marg.%</th>
+            <th data-col="totaleNetto" title="Totale">Totale</th>
+            <th data-col="trasporto" title="Trasporto">Trasp.</th>
+            <th data-col="installazione" title="Installazione">Inst.</th>
+            <th data-col="qta" title="Quantità">Qtà</th>
+            <th data-col="granTot" title="Gran Totale">Tot.</th>
+            <th data-col="venduto" title="Venduto A €">Vend.€</th>
+            <th data-col="diff" title="Differenza sconto">Diff.</th>
+            <th data-col="azioni" title="Azioni">Az.</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <!-- =======================================================
+         REPORT / EXPORT
+         ======================================================= -->
+    <section data-zone="report_export" id="report-section">
+      <h2>Report articoli</h2>
+      <div class="report-actions">
+        <button id="btnWA" type="button" onclick="inviaReportWhatsApp()">Invia WhatsApp</button>
+        <button id="btnTXT" type="button" onclick="generaTXTReport()">Genera TXT</button>
+      </div>
+      <div class="report-actions report-actions--secondary">
+        <button id="btnWASenzaMargine" type="button" onclick="inviaReportWhatsAppSenzaMargine()">WA (No Marg.)</button>
+        <button id="btnTXTSenzaMargine" type="button" onclick="generaTXTReportSenzaMargine()">TXT (No Marg.)</button>
+      </div>
+      <div class="report-preview" id="reportPreview" hidden></div>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    ListinoHub — © PezzaliAPP — MIT License
+  </footer>
+
+  <!-- =======================================================
+       MODALE: conflitto fornitore già esistente
+       ======================================================= -->
+  <div class="modal-overlay" id="supplierConflictModal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="supplierConflictTitle">
+      <h3 id="supplierConflictTitle">Fornitore già presente</h3>
+      <p>Esiste già un listino per <strong id="supplierConflictName">—</strong>. Cosa vuoi fare?</p>
+      <div class="modal-actions">
+        <button type="button" class="btn-primary" id="supplierConflictReplace">Aggiorna (sostituisci)</button>
+        <button type="button" id="supplierConflictKeep">Aggiungi come separato</button>
+        <button type="button" class="btn-ghost" id="supplierConflictCancel">Annulla</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =======================================================
+       MODALE: modifica impostazioni listino
+       ======================================================= -->
+  <div class="modal-overlay" id="listinoSettingsModal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="listinoSettingsTitle">
+      <h3 id="listinoSettingsTitle">Impostazioni listino</h3>
+      <div class="form-grid">
+        <div class="field field-full">
+          <label for="settingsNome">Nome fornitore</label>
+          <input id="settingsNome" type="text" autocomplete="off" />
+        </div>
+        <div class="field">
+          <label for="settingsMaxDiscount">Sconto max %</label>
+          <input id="settingsMaxDiscount" type="text" inputmode="decimal" autocomplete="off" />
+        </div>
+        <div class="field">
+          <label for="settingsBonusType">Bonus — tipo</label>
+          <input id="settingsBonusType" type="text" autocomplete="off" />
+        </div>
+        <div class="field">
+          <label for="settingsBonusValue">Bonus — valore/pz</label>
+          <input id="settingsBonusValue" type="text" inputmode="decimal" autocomplete="off" />
+        </div>
+        <div class="field field-full">
+          <p class="muted"><small>Il flag "prezzi netti" è immutabile dopo l'import.</small></p>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-primary" id="settingsSave">Salva</button>
+        <button type="button" class="btn-ghost" id="settingsCancel">Annulla</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast area -->
+  <div class="toast-region" id="toastRegion" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- Librerie (PapaParse per CSV, SheetJS per XLSX) -->
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <!-- App -->
+  <script defer src="app.js"></script>
+</body>
 </html>

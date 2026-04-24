@@ -1,21 +1,16 @@
-node_modules
-dist
-dist-ssr
-.vite
-*.local
-.env
-.env.*
-!.env.example
-
+# macOS
 .DS_Store
-Thumbs.db
 
-.idea
-.vscode/*
-!.vscode/extensions.json
-!.vscode/settings.json
+# Editor
+.idea/
+.vscode/
+*.swp
 
+# Claude Code local
+.claude/
+
+# Riferimenti locali (non committare)
+_reference/
+
+# Log
 *.log
-npm-debug.log*
-
-dev-dist
