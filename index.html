@@ -239,6 +239,21 @@
   </div>
 
   <!-- =======================================================
+       MODALE: elimina listino (scelta righe preventivo)
+       ======================================================= -->
+  <div class="modal-overlay" id="deleteListinoModal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="deleteListinoTitle">
+      <h3 id="deleteListinoTitle">Eliminare il listino?</h3>
+      <p>Il listino <strong id="deleteListinoName">—</strong> ha <strong id="deleteListinoCount">0</strong> righe nel preventivo. Come procedere?</p>
+      <div class="modal-actions">
+        <button type="button" class="btn-primary" id="deleteKeepRows">Mantieni righe nel preventivo</button>
+        <button type="button" class="btn-danger" id="deleteAlsoRows">Rimuovi anche le righe</button>
+        <button type="button" class="btn-ghost" id="deleteCancelBtn">Annulla</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =======================================================
        MODALE: modifica impostazioni listino
        ======================================================= -->
   <div class="modal-overlay" id="listinoSettingsModal" hidden>

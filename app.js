@@ -522,10 +522,62 @@ function askSupplierConflict(supplier) {
 async function deleteListino(id) {
   const l = listini.find(x => x.id === id);
   if (!l) return;
-  if (!confirm(`Eliminare il listino "${l.fornitore}"? Gli articoli in preventivo provenienti da questo listino resteranno.`)) return;
+
+  const rowsCount = articoliAggiunti.filter(a => a.listinoId === id).length;
+
+  let decision;
+  if (rowsCount === 0) {
+    if (!confirm(`Eliminare il listino "${l.fornitore}"?`)) return;
+    decision = 'keep';
+  } else {
+    decision = await askDeleteDecision(l.fornitore, rowsCount);
+    if (decision === 'cancel') return;
+  }
+
+  if (decision === 'remove-rows') {
+    articoliAggiunti = articoliAggiunti.filter(a => a.listinoId !== id);
+  }
+
   await dbDelete(id);
   await reloadListini();
-  toast('Listino eliminato.', 'success');
+  renderTabellaArticoli();
+  aggiornaTotaliGenerali();
+  updateEquivalentDiscountDisplay();
+
+  toast(
+    decision === 'remove-rows'
+      ? `Listino eliminato e ${rowsCount} righe rimosse dal preventivo.`
+      : 'Listino eliminato.',
+    'success'
+  );
+}
+
+function askDeleteDecision(supplier, count) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('deleteListinoModal');
+    if (!modal) return resolve('cancel');
+    document.getElementById('deleteListinoName').textContent = supplier;
+    document.getElementById('deleteListinoCount').textContent = String(count);
+    modal.hidden = false;
+
+    const btnKeep = document.getElementById('deleteKeepRows');
+    const btnRemove = document.getElementById('deleteAlsoRows');
+    const btnCancel = document.getElementById('deleteCancelBtn');
+
+    const close = (res) => {
+      modal.hidden = true;
+      btnKeep.removeEventListener('click', onK);
+      btnRemove.removeEventListener('click', onR);
+      btnCancel.removeEventListener('click', onC);
+      resolve(res);
+    };
+    const onK = () => close('keep');
+    const onR = () => close('remove-rows');
+    const onC = () => close('cancel');
+    btnKeep.addEventListener('click', onK);
+    btnRemove.addEventListener('click', onR);
+    btnCancel.addEventListener('click', onC);
+  });
 }
 
 async function renameListino(id) {
@@ -1077,9 +1129,23 @@ function aggregateBonus() {
   return [...map.entries()].map(([type, total]) => ({ type, total: roundTwo(total) }));
 }
 function hasNeedsApproval() { return articoliAggiunti.some(a => a.needsApproval); }
+
+/* Unità bonus intelligente:
+   - "buon" / "euro" / "€"  -> "€ 45,00 in buoni carburante"
+   - "punt"                 -> "120 punti fedeltà"  (intero, senza €)
+   - altrimenti             -> "45,00 [tipo]"
+*/
+function formatBonusEntry(type, total) {
+  const t = String(type || '').toLowerCase();
+  const isEuro = t.includes('buon') || t.includes('euro') || t.includes('€');
+  const isPoints = t.includes('punt');
+  if (isEuro) return `€ ${fmtDec(total, 2, false)} in ${type}`;
+  if (isPoints) return `${Math.round(total)} ${type}`;
+  return `${fmtDec(total, 2, false)} ${type}`;
+}
 function formatBonusLine(list) {
   if (!list.length) return '';
-  return 'Bonus accumulati: ' + list.map(b => `${fmtDec(b.total, 2, false)} in ${b.type}`).join(' | ');
+  return 'Bonus accumulati: ' + list.map(b => formatBonusEntry(b.type, b.total)).join(' | ');
 }
 
 /* -------------------- TOTALI -------------------- */
@@ -1133,7 +1199,7 @@ function aggiornaTotaliGenerali() {
   const bonus = aggregateBonus();
   if (bonus.length) {
     html += `<div class="bonus-line"><strong>Bonus accumulati:</strong> `
-         + bonus.map(b => `${fmtDec(b.total, 2, false)} in ${escapeHtml(b.type)}`).join(' · ')
+         + bonus.map(b => escapeHtml(formatBonusEntry(b.type, b.total))).join(' · ')
          + `</div>`;
   }
 
