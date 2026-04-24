@@ -204,6 +204,19 @@
       </div>
       <div class="report-preview" id="reportPreview" hidden></div>
     </section>
+
+    <!-- =======================================================
+         BACKUP / RESTORE
+         ======================================================= -->
+    <section data-zone="backup" id="backup-section">
+      <h2>Backup</h2>
+      <p class="muted" style="margin:0 0 10px;">Esporta o ripristina tutti i listini, le preferenze e il preventivo corrente in un unico file JSON.</p>
+      <div class="actions-row">
+        <button id="btnExportBackup" type="button">Esporta backup JSON</button>
+        <button id="btnImportBackup" type="button">Importa backup JSON</button>
+      </div>
+      <input id="backupFileInput" type="file" accept=".json,application/json" hidden />
+    </section>
   </main>
 
   <footer class="app-footer">

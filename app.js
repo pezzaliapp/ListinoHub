@@ -128,6 +128,15 @@ async function dbDelete(id) {
     tx.onerror = () => reject(tx.error);
   });
 }
+async function dbClearListini() {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_LISTINI, 'readwrite');
+    tx.objectStore(STORE_LISTINI).clear();
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
 async function kvSet(key, value) {
   const db = await openDB();
   return new Promise((resolve, reject) => {
@@ -725,6 +734,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   bindSmartControls();
   bindSettingsModal();
+  bindBackupUI();
 
   await reloadListini();
 
@@ -1457,6 +1467,160 @@ function scaricaTesto(text, filename) {
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(link.href);
+}
+
+/* -------------------- BACKUP / RESTORE JSON -------------------- */
+const BACKUP_VERSION = 1;
+
+function buildBackupPayload() {
+  return {
+    app: 'ListinoHub',
+    version: BACKUP_VERSION,
+    exportedAt: Date.now(),
+    listini,
+    smartSettings,
+    preventivo: articoliAggiunti
+  };
+}
+
+function exportBackup() {
+  try {
+    const payload = buildBackupPayload();
+    const json = JSON.stringify(payload, null, 2);
+    const today = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const stamp = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+    scaricaTesto(json, `listinohub-backup-${stamp}.json`);
+    toast('Backup esportato.', 'success');
+  } catch (err) {
+    console.error(err);
+    toast('Errore durante l\'export del backup.', 'error');
+  }
+}
+
+function validateBackupPayload(data) {
+  if (!data || typeof data !== 'object') return 'File non valido.';
+  if (typeof data.version !== 'number') return 'Versione mancante o non valida.';
+  if (!Array.isArray(data.listini)) return 'Struttura "listini" mancante o non valida.';
+  for (const l of data.listini) {
+    if (!l || typeof l !== 'object') return 'Listino non valido.';
+    if (typeof l.id !== 'string' || !l.id) return 'ID listino mancante.';
+    if (typeof l.fornitore !== 'string') return 'Fornitore listino mancante.';
+    if (!Array.isArray(l.articoli)) return 'Articoli listino mancanti.';
+  }
+  return null;
+}
+
+async function importBackupFromFile(file) {
+  try {
+    const text = await file.text();
+    let data;
+    try { data = JSON.parse(text); }
+    catch { toast('Il file non è un JSON valido.', 'error'); return; }
+
+    const err = validateBackupPayload(data);
+    if (err) { toast(err, 'error'); return; }
+
+    const confirmed = confirm(
+      `Sostituire i dati attuali con il backup?\n\n` +
+      `Backup contiene: ${data.listini.length} listini, ` +
+      `${Array.isArray(data.preventivo) ? data.preventivo.length : 0} righe preventivo.\n\n` +
+      `Verranno SOVRASCRITTI i listini e il preventivo correnti.`
+    );
+    if (!confirmed) return;
+
+    await dbClearListini();
+    for (const l of data.listini) {
+      const safe = {
+        id: String(l.id),
+        nome: String(l.nome || l.fornitore || 'listino'),
+        fornitore: String(l.fornitore || ''),
+        dataImport: Number(l.dataImport) || Date.now(),
+        numeroArticoli: Number(l.numeroArticoli) || (Array.isArray(l.articoli) ? l.articoli.length : 0),
+        scontoMaxCommerciale: parseDec(l.scontoMaxCommerciale || 0),
+        isNetto: !!l.isNetto,
+        bonusType: String(l.bonusType || ''),
+        bonusValue: parseDec(l.bonusValue || 0),
+        articoli: (Array.isArray(l.articoli) ? l.articoli : []).map(a => ({
+          codice: String(a.codice || '').trim(),
+          descrizione: String(a.descrizione || '').trim(),
+          prezzoLordo: parseDec(a.prezzoLordo || 0),
+          costoTrasporto: parseDec(a.costoTrasporto || 0),
+          costoInstallazione: parseDec(a.costoInstallazione || 0)
+        }))
+      };
+      await dbPut(safe);
+    }
+
+    if (data.smartSettings && typeof data.smartSettings === 'object') {
+      smartSettings = { ...smartSettings, ...data.smartSettings };
+      saveSmartSettings();
+      // rispecchia nei controlli UI
+      const map = {
+        toggleSmartMode: smartSettings.smartMode,
+        toggleShowVAT: smartSettings.showVAT,
+        toggleHideVenduto: smartSettings.hideVenduto,
+        toggleHideDiff: smartSettings.hideDiff,
+        toggleHideDiscounts: smartSettings.hideDiscounts,
+        toggleShowClientDiscount: smartSettings.showClientDiscount
+      };
+      Object.entries(map).forEach(([id, val]) => {
+        const el = document.getElementById(id);
+        if (el) el.checked = !!val;
+      });
+      const vatEl = document.getElementById('vatRate');
+      if (vatEl) vatEl.value = smartSettings.vatRate ?? 22;
+    }
+
+    if (Array.isArray(data.preventivo)) {
+      articoliAggiunti = data.preventivo.map(a => ({
+        codice: String(a.codice || ''),
+        descrizione: String(a.descrizione || ''),
+        prezzoLordo: parseDec(a.prezzoLordo || 0),
+        sconto: parseDec(a.sconto || 0),
+        sconto2: parseDec(a.sconto2 || 0),
+        margine: parseDec(a.margine || 0),
+        scontoCliente: parseDec(a.scontoCliente || 0),
+        costoTrasporto: parseDec(a.costoTrasporto || 0),
+        costoInstallazione: parseDec(a.costoInstallazione || 0),
+        quantita: Math.max(1, parseInt(a.quantita || 1, 10) || 1),
+        venduto: parseDec(a.venduto || 0),
+        fornitore: String(a.fornitore || ''),
+        listinoId: a.listinoId || null,
+        isNetto: !!a.isNetto,
+        scontoMax: parseDec(a.scontoMax || 0),
+        bonusType: String(a.bonusType || ''),
+        bonusValue: parseDec(a.bonusValue || 0),
+        needsApproval: !!a.needsApproval
+      }));
+    }
+
+    await reloadListini();
+    renderTabellaArticoli();
+    aggiornaTotaliGenerali();
+    applyColumnVisibility();
+    updateEquivalentDiscountDisplay();
+
+    toast(`Backup importato: ${data.listini.length} listini.`, 'success');
+  } catch (err) {
+    console.error(err);
+    toast('Errore durante l\'import del backup.', 'error');
+  }
+}
+
+function bindBackupUI() {
+  const btnExport = document.getElementById('btnExportBackup');
+  const btnImport = document.getElementById('btnImportBackup');
+  const fileInput = document.getElementById('backupFileInput');
+  if (btnExport) btnExport.addEventListener('click', exportBackup);
+  if (btnImport && fileInput) {
+    btnImport.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', async (e) => {
+      const f = e.target.files?.[0];
+      if (f) await importBackupFromFile(f);
+      e.target.value = '';
+    });
+  }
 }
 
 /* Expose per onclick legacy nei pulsanti report */
